@@ -1,0 +1,252 @@
+
+{
+  timestamp: '2025-12-23T10:15:00Z',
+  underlyingPrice: 26177,         // spot/last price
+  callOI: 12_450_000,             // total call OI (or sum across strikes)
+  putOI: 10_900_000,              // total put OI (or sum across strikes)
+  callOIChange: +145_000,         // change vs previous snapshot
+  putOIChange: +320_000,          // change vs previous snapshot
+  volumeCall: 580_000,            // optional: call volume
+  volumePut: 620_000,             // optional: put volume
+  ivCall: 17.8,                   // optional: avg call IV (%)
+  ivPut: 19.2                     // optional: avg put IV (%)
+}
+
+
+/**
+ * Options PCR & OI Signal Engine
+ * Author: Makarand (with Copilot)
+ * Usage: drop in browser or Node, adjust thresholds in config.
+ */
+
+// --------------------- Types (JSDoc) ---------------------
+/**
+ * @typedef {Object} Snapshot
+ * @property {string|Date} timestamp
+ * @property {number} underlyingPrice
+ * @property {number} callOI
+ * @property {number} putOI
+ * @property {number} [callOIChange]
+ * @property {number} [putOIChange]
+ * @property {number} [volumeCall]
+ * @property {number} [volumePut]
+ * @property {number} [ivCall]  // %
+ * @property {number} [ivPut]   // %
+ */
+
+/**
+ * @typedef {Object} Signal
+ * @property {'Bullish'|'Bearish'|'Neutral'} bias
+ * @property {number} confidence             // 0..100
+ * @property {number} pcr
+ * @property {string[]} reasons              // human-readable explanations
+ * @property {Object} details                // raw data used
+ */
+
+// --------------------- Config & Helpers ---------------------
+const defaultConfig = {
+  pcrBullishMax: 0.95,   // PCR below this leans bullish
+  pcrBearishMin: 1.05,   // PCR above this leans bearish
+  minAbsOIChange: 50_000, // ignore tiny OI moves
+  priceUpThresholdPct: 0.2,  // minimal % change to consider price up
+  priceDownThresholdPct: -0.2, // minimal % change to consider price down
+  ivAggressiveThreshold: 1.0, // IV change (in percentage points) considered meaningful
+};
+
+/**
+ * Compute PCR safely.
+ * @param {Snapshot} s
+ * @returns {number} PCR
+ */
+function computePCR(s) {
+  if (!s || s.callOI == null || s.putOI == null || s.callOI <= 0) return NaN;
+  return s.putOI / s.callOI;
+}
+
+/**
+ * Derive price change percentage vs previous snapshot.
+ * @param {Snapshot} prev
+ * @param {Snapshot} curr
+ * @returns {number} percent
+ */
+function pctChange(prev, curr) {
+  if (!prev || !curr) return 0;
+  const p0 = prev.underlyingPrice;
+  const p1 = curr.underlyingPrice;
+  if (!p0 || !p1) return 0;
+  return ((p1 - p0) / p0) * 100;
+}
+
+/**
+ * IV change helpers (percentage points).
+ */
+function ivDelta(prev, curr) {
+  const dCall = (prev?.ivCall != null && curr?.ivCall != null) ? (curr.ivCall - prev.ivCall) : 0;
+  const dPut  = (prev?.ivPut  != null && curr?.ivPut  != null) ? (curr.ivPut  - prev.ivPut)  : 0;
+  return { dCall, dPut };
+}
+
+// --------------------- Signal Engine ---------------------
+/**
+ * Generate signal from two consecutive snapshots (prev → curr).
+ * @param {Snapshot} prev
+ * @param {Snapshot} curr
+ * @param {Partial<typeof defaultConfig>} cfg
+ * @returns {Signal}
+ */
+function generateSignal(prev, curr, cfg = {}) {
+  const conf = { ...defaultConfig, ...cfg };
+
+  const pcr = computePCR(curr);
+  const pricePct = pctChange(prev, curr);
+  const { dCall, dPut } = ivDelta(prev, curr);
+
+  // Normalize OI changes
+  const callDelta = curr.callOIChange ?? (curr.callOI - (prev?.callOI ?? curr.callOI));
+  const putDelta  = curr.putOIChange  ?? (curr.putOI  - (prev?.putOI  ?? curr.putOI));
+
+  const reasons = [];
+  let score = 0;          // confidence accumulator
+  let bias = 'Neutral';   // default
+
+  // --- PCR baseline ---
+  if (!Number.isNaN(pcr)) {
+    if (pcr <= conf.pcrBullishMax) {
+      reasons.push(`PCR ${pcr.toFixed(2)} below ${conf.pcrBullishMax} → bullish tilt`);
+      score += 25;
+      bias = 'Bullish';
+    } else if (pcr >= conf.pcrBearishMin) {
+      reasons.push(`PCR ${pcr.toFixed(2)} above ${conf.pcrBearishMin} → bearish tilt`);
+      score += 25;
+      bias = 'Bearish';
+    } else {
+      reasons.push(`PCR ${pcr.toFixed(2)} in neutral zone`);
+      score += 10;
+    }
+  } else {
+    reasons.push('PCR unavailable/invalid');
+  }
+
+  // --- Price & OI confirmation ---
+  const priceUp   = pricePct >= conf.priceUpThresholdPct;
+  const priceDown = pricePct <= conf.priceDownThresholdPct;
+
+  const bigCallOI = Math.abs(callDelta) >= conf.minAbsOIChange;
+  const bigPutOI  = Math.abs(putDelta)  >= conf.minAbsOIChange;
+
+  if (priceUp && bigCallOI && callDelta > 0) {
+    reasons.push(`Price ↑ ${pricePct.toFixed(2)}% with Call OI ↑ ${formatNum(callDelta)} → bullish build-up`);
+    score += 30;
+    bias = bumpBias(bias, 'Bullish');
+  }
+  if (priceDown && bigPutOI && putDelta > 0) {
+    reasons.push(`Price ↓ ${pricePct.toFixed(2)}% with Put OI ↑ ${formatNum(putDelta)} → bearish build-up`);
+    score += 30;
+    bias = bumpBias(bias, 'Bearish');
+  }
+
+  // Unwinding / covering hints
+  if (priceUp && bigPutOI && putDelta < 0) {
+    reasons.push(`Price ↑ with Put OI ↓ ${formatNum(putDelta)} → short covering`);
+    score += 15;
+    bias = bumpBias(bias, 'Bullish');
+  }
+  if (priceDown && bigCallOI && callDelta < 0) {
+    reasons.push(`Price ↓ with Call OI ↓ ${formatNum(callDelta)} → long unwinding`);
+    score += 15;
+    bias = bumpBias(bias, 'Bearish');
+  }
+
+  // --- IV context (optional) ---
+  if (Math.abs(dCall) >= conf.ivAggressiveThreshold || Math.abs(dPut) >= conf.ivAggressiveThreshold) {
+    if (dCall > 0 && callDelta > 0) {
+      reasons.push(`Call IV ↑ ${dCall.toFixed(1)}pp with Call OI ↑ → aggressive call buying`);
+      score += 10;
+      bias = bumpBias(bias, 'Bullish');
+    }
+    if (dPut > 0 && putDelta > 0) {
+      reasons.push(`Put IV ↑ ${dPut.toFixed(1)}pp with Put OI ↑ → aggressive put buying`);
+      score += 10;
+      bias = bumpBias(bias, 'Bearish');
+    }
+    if (dCall < 0 && callDelta > 0) {
+      reasons.push(`Call IV ↓ with Call OI ↑ → likely call writing`);
+      score += 5; // writing is less directional certainty
+    }
+    if (dPut < 0 && putDelta > 0) {
+      reasons.push(`Put IV ↓ with Put OI ↑ → likely put writing`);
+      score += 5;
+    }
+  }
+
+  // Cap score to 100
+  score = Math.max(0, Math.min(100, score));
+
+  const signal = {
+    bias,
+    confidence: score,
+    pcr,
+    reasons,
+    details: {
+      timestamp: curr.timestamp,
+      underlyingPrice: curr.underlyingPrice,
+      callOI: curr.callOI,
+      putOI: curr.putOI,
+      callOIChange: callDelta,
+      putOIChange: putDelta,
+      priceChangePct: pricePct,
+      ivDeltaCall: dCall,
+      ivDeltaPut: dPut,
+    }
+  };
+
+  return signal;
+}
+
+// --------------------- Utilities ---------------------
+function formatNum(n) {
+  const sign = n >= 0 ? '+' : '';
+  return `${sign}${Number(n).toLocaleString()}`;
+}
+
+function bumpBias(current, next) {
+  if (current === 'Neutral') return next;
+  if (current !== next) {
+    // conflicting signals → keep stronger one decided later via score
+    return next;
+  }
+  return current;
+}
+
+// --------------------- Demo ---------------------
+if (typeof window !== 'undefined') {
+  // Example snapshots (prev → curr)
+  const prev = {
+    timestamp: '2025-12-23T10:00:00Z',
+    underlyingPrice: 26050,
+    callOI: 12_300_000,
+    putOI: 10_700_000,
+    ivCall: 17.0,
+    ivPut: 18.5
+  };
+
+  const curr = {
+    timestamp: '2025-12-23T10:15:00Z',
+    underlyingPrice: 26177,
+    callOI: 12_450_000,
+    putOI: 10_900_000,
+    callOIChange: +150_000,
+    putOIChange: +200_000,
+    ivCall: 17.8,
+    ivPut: 19.2
+  };
+
+  const signal = generateSignal(prev, curr, {
+    pcrBullishMax: 0.95,
+    pcrBearishMin: 1.05,
+    minAbsOIChange: 50_000
+  });
+
+  console.log('Signal:', signal);
+  // You can render `signal.bias`, `signal.confidence`, and `signal.reasons` in your UI.
+}

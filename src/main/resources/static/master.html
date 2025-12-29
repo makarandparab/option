@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OI Data Visualization</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/patternomaly/1.3.2/patternomaly.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8f9fa;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .chart-container {
+            width: 80%;
+            max-width: 1000px;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+
+<!--
+Call OI Change: Dark Red for increases and Yellow for decreases.
+Put OI Change: Dark Green for increases and Dark Red for decreases.
+-->
+
+<body>
+
+<div class="chart-container">
+    <canvas id="oiChart"></canvas>
+</div>
+
+<script>
+
+    let myChart = null;
+
+    async function fetchDataAndRender() {
+        try {
+            const response = await fetch('/optionData');
+            const data = await response.json();
+
+            const overallData = data.body.overallData;
+            const oiDataMap = data.body.oiData;
+
+            const niftyValue = data.niftyValue;
+            //const pcr = data.pcr;
+
+            // X-Axis: Strike Prices
+            const strikePrices = overallData.strikePriceList;
+
+            // Put Data
+            const stablePutOi = [];
+            const changePutOi = [];
+            const changePutColors = [];
+
+            // Call Data
+            const stableCallOi = [];
+            const changeCallOi = [];
+            const changeCallColors = [];
+
+            // PCR Data
+            const customLabels = [];
+            const customLabelColors = [];
+
+            strikePrices.forEach(strike => {
+                const strikeKey = strike.toString();
+                if (oiDataMap[strikeKey])
+                {
+                    // --- Put Logic ---
+                    const pOi = oiDataMap[strikeKey].putOi;
+                    const pChange = oiDataMap[strikeKey].putOiChange;
+                    if (pChange >= 0)
+                    {
+                        stablePutOi.push(pOi - pChange);
+                        changePutOi.push(pChange);
+                        //changePutColors.push('rgba(0, 100, 0, 1)'); // Dark Green
+                        changePutColors.push(pattern.draw('diagonal-right-left', 'rgba(0,100,0,1)'));
+                    }
+                    else
+                    {
+                        stablePutOi.push(pOi);
+                        changePutOi.push(Math.abs(pChange));
+                        changePutColors.push('rgba(255, 205, 86, 1)'); // Yellow
+                    }
+
+                    // --- Call Logic ---
+                    const cOi = oiDataMap[strikeKey].callOi;
+                    const cChange = oiDataMap[strikeKey].callOiChange;
+                    if (cChange >= 0)
+                    {
+                        stableCallOi.push(cOi - cChange);
+                        changeCallOi.push(cChange);
+                        //changeCallColors.push('rgba(139, 0, 0, 1)'); // Dark Red
+                        changeCallColors.push(pattern.draw('diagonal-right-left', 'rgba(139,0,0,1)'));
+                    }
+                    else
+                    {
+                        stableCallOi.push(cOi);
+                        changeCallOi.push(Math.abs(cChange));
+                        changeCallColors.push('rgba(255, 205, 86, 1)'); // Yellow
+                    }
+
+                    // --- PCR Logic ---
+                    const pcr = cOi > 0 ? (pOi / cOi) : 0;
+                    let label = strikeKey;
+                    let color = '#666'; // Default gray/black
+                    label = `(${strikeKey} : ${pcr.toFixed(2)})`;
+
+                    if (pcr < 0.7)
+                    {
+                        //if the value of PCR is below 0.7 then chance is that Call will rally as because it is in Unbalance ZONE
+                        color = 'red';
+                        //label = `(${strikeKey} : ${pcr.toFixed(2)})`;
+                    }
+                    else if (pcr > 1.2)
+                    {
+                        //If the value of PCR is above 1.2 then chance is that PUT will rally as because it is in Unbalance ZONE.
+                        color = 'blue';
+                        //label = `(${strikeKey} : ${pcr.toFixed(2)})`;
+                    }
+
+                    customLabels.push(label);
+                    customLabelColors.push(color);
+                }
+                else
+                {
+                    stablePutOi.push(0); changePutOi.push(0); changePutColors.push('rgba(0,0,0,0)');
+                    stableCallOi.push(0); changeCallOi.push(0); changeCallColors.push('rgba(0,0,0,0)');
+                    customLabels.push(strikeKey);
+                    customLabelColors.push('#666');
+                }
+            });
+
+            renderChart(customLabels, stablePutOi, changePutOi, changePutColors, stableCallOi, changeCallOi,
+                changeCallColors, niftyValue, customLabelColors);
+        } catch (error) {
+            console.error('Error fetching data:', error);
+        }
+    }
+
+    function renderChart(labels, stablePut, changePut, changePutColors, stableCall, changeCall,
+                         changeCallColors, niftyValue, labelColors)
+    {
+        const ctx = document.getElementById('oiChart').getContext('2d');
+
+        if (myChart) {
+            myChart.destroy();
+        }
+
+        myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    // --- Put Stack ---
+                    {
+                        label: 'Put Stable',
+                        data: stablePut,
+                        //backgroundColor: 'rgba(75, 192, 192, 1)', // Green
+                        backgroundColor: 'rgba(0,200,0,1)', // Green
+                        stack: 'put'
+                    },
+                    {
+                        label: 'Put Change',
+                        data: changePut,
+                        backgroundColor: changePutColors,
+                        stack: 'put'
+                    },
+                    // --- Call Stack ---
+                    {
+                        label: 'Call Stable',
+                        data: stableCall,
+                        //backgroundColor: 'rgba(255, 99, 132, 1)', // Red
+                        backgroundColor: 'rgba(239, 0, 0, 1)', // Red
+                        stack: 'call'
+                    },
+                    {
+                        label: 'Call Change',
+                        data: changeCall,
+                        backgroundColor: changeCallColors,
+                        stack: 'call'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: {
+                        display: true,
+                        text: `OI Analysis: Put (Green) vs Call (Red)- Nifty: ${niftyValue || 'N/A'}`,
+                        font: { size: 18 }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                    }
+                },
+                scales: {
+                    x: {
+                        title: { display: true, text: 'Strike Price' },
+                        stacked: true,
+                        ticks: {
+                            color: labelColors,
+                            font: function (context) {
+                                if (context.tick && context.tick.label && (context.tick.label.includes('PCR'))) {
+                                    return { weight: 'bold' };
+                                }
+                            }
+                        }
+                    },
+                    y: {
+                        title: { display: true, text: 'Open Interest' },
+                        beginAtZero: true,
+                        stacked: true
+                    }
+                }
+            }
+        });
+    }
+
+    fetchDataAndRender();
+    //setInterval(fetchDataAndRender, 180000); // Refresh every 3 minutes
+</script>
+
+</body>
+
+</html>
