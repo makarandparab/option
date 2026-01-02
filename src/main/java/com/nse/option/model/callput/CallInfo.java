@@ -21,6 +21,8 @@ public class CallInfo
     private double theta_calc;
     private double vega_calc;
     private String get_built_up_str;
+    private double last_5min_oi_change_percent;
+    private double last_15min_oi_change_percent;
 
     public String getGet_built_up_str() {
         return get_built_up_str;
@@ -172,5 +174,21 @@ public class CallInfo
 
     public void setOpt_type(String opt_type) {
         this.opt_type = opt_type;
+    }
+
+    public double getLast_5min_oi_change_percent() {
+        return last_5min_oi_change_percent;
+    }
+
+    public void setLast_5min_oi_change_percent(double last_5min_oi_change_percent) {
+        this.last_5min_oi_change_percent = last_5min_oi_change_percent;
+    }
+
+    public double getLast_15min_oi_change_percent() {
+        return last_15min_oi_change_percent;
+    }
+
+    public void setLast_15min_oi_change_percent(double last_15min_oi_change_percent) {
+        this.last_15min_oi_change_percent = last_15min_oi_change_percent;
     }
 }
