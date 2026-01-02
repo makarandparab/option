@@ -10,7 +10,7 @@
     <meta http-equiv="Expires" content="0">
     <!-- Modern Typography -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Outfit:wght@600;700&display=swap"
-        rel="stylesheet">
+          rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/patternomaly/1.3.2/patternomaly.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1"></script>
@@ -56,6 +56,7 @@
             font-size: 20px;
             margin: 0;
             background: linear-gradient(135deg, #0066ff, #00d2ff);
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -237,156 +238,181 @@
 
 <body>
 
-    <header>
-        <h1>OI Analyzr Pro</h1>
-        <div class="live-badge">
-            <span class="dot"></span>
-            Nifty: <span id="niftyPrice" style="margin-left:5px">Loading...</span>
+<header>
+    <h1>OI Analyzr Pro</h1>
+    <div class="live-badge">
+        <span class="dot"></span>
+        Nifty: <span id="niftyPrice" style="margin-left:5px">Loading...</span>
+    </div>
+</header>
+
+<main class="main-container">
+    <div class="card card-chart">
+        <h2>📊 Open Interest Analysis</h2>
+        <div class="chart-container">
+            <canvas id="oiChart"></canvas>
         </div>
-    </header>
+    </div>
 
-    <main class="main-container">
-        <div class="card card-chart">
-            <h2>📊 Open Interest Analysis</h2>
-            <div class="chart-container">
-                <canvas id="oiChart"></canvas>
-            </div>
+    <div class="card card-table">
+        <h2>⚡ Signal Intelligence</h2>
+        <div class="table-container">
+            <table id="signalTable">
+                <thead>
+                <tr>
+                    <th>Strike</th>
+                    <th>PCR</th>
+                    <th>Call OI%</th>
+                    <th>Put OI%</th>
+                    <th>Call Vol</th>
+                    <th>Put Vol</th>
+                    <th>Call IV%</th>
+                    <th>Put IV%</th>
+                    <th>Call Δ</th>
+                    <th>Put Δ</th>
+                    <th>Action</th>
+                </tr>
+                </thead>
+                <tbody id="signalBody"></tbody>
+            </table>
         </div>
+    </div>
+</main>
 
-        <div class="card card-table">
-            <h2>⚡ Signal Intelligence</h2>
-            <div class="table-container">
-                <table id="signalTable">
-                    <thead>
-                        <tr>
-                            <th>Strike</th>
-                            <th>PCR</th>
-                            <th>Call OI%</th>
-                            <th>Put OI%</th>
-                            <th>Call Vol</th>
-                            <th>Put Vol</th>
-                            <th>Call IV%</th>
-                            <th>Put IV%</th>
-                            <th>Call Δ</th>
-                            <th>Put Δ</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="signalBody"></tbody>
-                </table>
-            </div>
-        </div>
-    </main>
+<script>
+    let myChart = null;
+    let lastSpotPrice = null;
+    let lastOiDataMap = null;
 
-    <script>
-        let myChart = null;
-        let lastSpotPrice = null;
-        let lastOiDataMap = null;
+    function calculateRelativeChange(current, previous) {
+        if (previous === undefined || previous === null || previous === 0) return 0;
+        return ((current - previous) / Math.abs(previous)) * 100;
+    }
 
-        function calculateRelativeChange(current, previous) {
-            if (previous === undefined || previous === null || previous === 0) return 0;
-            return ((current - previous) / Math.abs(previous)) * 100;
-        }
+    async function fetchDataAndRender() {
+        try {
+            const response = await fetch('/optionData');
+            const data = await response.json();
 
-        async function fetchDataAndRender() {
-            try {
-                const response = await fetch('/optionData');
-                const data = await response.json();
+            const overallData = data.body.overallData;
+            const oiDataMap = data.body.oiData;
+            const niftyValue = data.niftyValue;
+            const niftyData = data.niftyData;
+            const strikePrices = overallData.strikePriceList;
 
-                const overallData = data.body.overallData;
-                const oiDataMap = data.body.oiData;
-                const niftyValue = data.niftyValue;
-                const niftyData = data.niftyData;
-                const strikePrices = overallData.strikePriceList;
+            document.getElementById('niftyPrice').innerText = niftyValue || 'N/A';
 
-                document.getElementById('niftyPrice').innerText = niftyValue || 'N/A';
+            const currentSpotPrice = parseFloat(niftyData);
+            let priceTrend = null;
+            if (lastSpotPrice !== null) {
+                if (currentSpotPrice > lastSpotPrice) priceTrend = 'UP';
+                else if (currentSpotPrice < lastSpotPrice) priceTrend = 'DOWN';
+            }
 
-                const currentSpotPrice = parseFloat(niftyData);
-                let priceTrend = null;
-                if (lastSpotPrice !== null) {
-                    if (currentSpotPrice > lastSpotPrice) priceTrend = 'UP';
-                    else if (currentSpotPrice < lastSpotPrice) priceTrend = 'DOWN';
-                }
+            const stablePutOi = [];
+            const changePutOi = [];
+            const changePutColors = [];
+            const stableCallOi = [];
+            const changeCallOi = [];
+            const changeCallColors = [];
+            const customLabels = [];
+            const customLabelColors = [];
 
-                const stablePutOi = [];
-                const changePutOi = [];
-                const changePutColors = [];
-                const stableCallOi = [];
-                const changeCallOi = [];
-                const changeCallColors = [];
-                const customLabels = [];
-                const customLabelColors = [];
+            const signalBody = document.getElementById('signalBody');
+            signalBody.innerHTML = '';
 
-                const signalBody = document.getElementById('signalBody');
-                signalBody.innerHTML = '';
+            strikePrices.forEach(strike => {
+                const strikeKey = strike.toString();
+                if (oiDataMap[strikeKey]) {
+                    const sData = oiDataMap[strikeKey];
+                    const cInfo = sData.callInfo || {};
+                    const pInfo = sData.putInfo || {};
 
-                strikePrices.forEach(strike => {
-                    const strikeKey = strike.toString();
-                    if (oiDataMap[strikeKey]) {
-                        const sData = oiDataMap[strikeKey];
-                        const cInfo = sData.callInfo || {};
-                        const pInfo = sData.putInfo || {};
+                    const pOi = sData.putOi;
+                    const pChange = sData.putOiChange;
+                    const pChangeP = sData.putOiChangeP || 0;
+                    if (pChange >= 0) {
+                        stablePutOi.push(pOi - pChange);
+                        changePutOi.push(pChange);
+                        changePutColors.push(pattern.draw('diagonal-right-left', 'rgba(16, 185, 129, 0.8)'));
+                    } else {
+                        stablePutOi.push(pOi);
+                        changePutOi.push(Math.abs(pChange));
+                        changePutColors.push('rgba(251, 191, 36, 0.9)');
+                    }
 
-                        const pOi = sData.putOi;
-                        const pChange = sData.putOiChange;
-                        const pChangeP = sData.putOiChangeP || 0;
-                        if (pChange >= 0) {
-                            stablePutOi.push(pOi - pChange);
-                            changePutOi.push(pChange);
-                            changePutColors.push(pattern.draw('diagonal-right-left', 'rgba(16, 185, 129, 0.8)'));
-                        } else {
-                            stablePutOi.push(pOi);
-                            changePutOi.push(Math.abs(pChange));
-                            changePutColors.push('rgba(251, 191, 36, 0.9)');
+                    const cOi = sData.callOi;
+                    const cChange = sData.callOiChange;
+                    const cChangeP = sData.callOiChangeP || 0;
+                    if (cChange >= 0) {
+                        stableCallOi.push(cOi - cChange);
+                        changeCallOi.push(cChange);
+                        changeCallColors.push(pattern.draw('diagonal-right-left', 'rgba(239, 68, 68, 0.8)'));
+                    } else {
+                        stableCallOi.push(cOi);
+                        changeCallOi.push(Math.abs(cChange));
+                        changeCallColors.push('rgba(251, 191, 36, 0.9)');
+                    }
+
+                    const pcr = cOi > 0 ? (pOi / cOi) : 0;
+                    let color = '#64748b';
+                    if (pcr < 0.7) color = '#ef4444';
+                    else if (pcr > 1.2) color = '#3b82f6';
+
+                    customLabels.push(`(${strikeKey} : ${pcr.toFixed(2)})`);
+                    customLabelColors.push(color);
+
+                    let signal = "-";
+                    let rowClass = "";
+
+                    // Signal logic based on relative change of OI change percentages (5 mins & 15 mins)
+                    const last5MinCallOiChgP = cInfo.last_5min_oi_change_percent || 0;
+                    const last5MinPutOiChgP = pInfo.last_5min_oi_change_percent || 0;
+                    const last15MinCallOiChgP = cInfo.last_15min_oi_change_percent || 0;
+                    const last15MinPutOiChgP = pInfo.last_15min_oi_change_percent || 0;
+
+                    // 5-min calculation
+                    const relCChange5 = calculateRelativeChange(cChangeP, last5MinCallOiChgP);
+                    const relPChange5 = calculateRelativeChange(pChangeP, last5MinPutOiChgP);
+
+                    // 15-min calculation
+                    const relCChange15 = calculateRelativeChange(cChangeP, last15MinCallOiChgP);
+                    const relPChange15 = calculateRelativeChange(pChangeP, last15MinPutOiChgP);
+
+                    let signals = [];
+
+                    if (priceTrend === 'UP') {
+                        // 5-min Rule: Call Rel Change <= -15% AND Put Rel Change [5%, 10%]
+                        if (relCChange5 <= -15 && relPChange5 >= 5 && relPChange5 <= 10) {
+                            signals.push(`5m: BUY CALL @ ${cInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-call";
                         }
-
-                        const cOi = sData.callOi;
-                        const cChange = sData.callOiChange;
-                        const cChangeP = sData.callOiChangeP || 0;
-                        if (cChange >= 0) {
-                            stableCallOi.push(cOi - cChange);
-                            changeCallOi.push(cChange);
-                            changeCallColors.push(pattern.draw('diagonal-right-left', 'rgba(239, 68, 68, 0.8)'));
-                        } else {
-                            stableCallOi.push(cOi);
-                            changeCallOi.push(Math.abs(cChange));
-                            changeCallColors.push('rgba(251, 191, 36, 0.9)');
+                        // 15-min Rule: Same thresholds
+                        if (relCChange15 <= -15 && relPChange15 >= 5 && relPChange15 <= 10) {
+                            signals.push(`15m: BUY CALL @ ${cInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-call";
                         }
-
-                        const pcr = cOi > 0 ? (pOi / cOi) : 0;
-                        let color = '#64748b';
-                        if (pcr < 0.7) color = '#ef4444';
-                        else if (pcr > 1.2) color = '#3b82f6';
-
-                        customLabels.push(`(${strikeKey} : ${pcr.toFixed(2)})`);
-                        customLabelColors.push(color);
-
-                        let signal = "-";
-                        let rowClass = "";
-
-                        // Signal logic based on relative change of OI change percentages
-                        if (lastOiDataMap && lastOiDataMap[strikeKey]) {
-                            const prevSData = lastOiDataMap[strikeKey];
-                            const prevCChangeP = prevSData.callOiChangeP || 0;
-                            const prevPChangeP = prevSData.putOiChangeP || 0;
-
-                            const relCChange = calculateRelativeChange(cChangeP, prevCChangeP);
-                            const relPChange = calculateRelativeChange(pChangeP, prevPChangeP);
-
-                            if (priceTrend === 'UP') {
-                                if (relCChange <= -15 && relPChange >= 5 && relPChange <= 10) {
-                                    //signal = "BUY CALL"; rowClass = "signal-call";
-                                    signal = `BUY CALL @ ${cInfo.current_price.toFixed(2)}`; rowClass = "signal-call";
-                                }
-                            } else if (priceTrend === 'DOWN') {
-                                if (relPChange <= -15 && relCChange >= 5 && relCChange <= 10) {
-                                    //signal = "BUY PUT"; rowClass = "signal-put";
-                                    signal = `BUY PUT @ ${pInfo.current_price.toFixed(2)}`; rowClass = "signal-put";
-                                }
-                            }
+                    } else if (priceTrend === 'DOWN') {
+                        // 5-min Rule: Put Rel Change <= -15% AND Call Rel Change [5%, 10%]
+                        if (relPChange5 <= -15 && relCChange5 >= 5 && relCChange5 <= 10) {
+                            signals.push(`5m: BUY PUT @ ${pInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-put";
                         }
+                        // 15-min Rule: Same thresholds
+                        if (relPChange15 <= -15 && relCChange15 >= 5 && relCChange15 <= 10) {
+                            signals.push(`15m: BUY PUT @ ${pInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-put";
+                        }
+                    }
 
-                        const row = `<tr>
+                    if (signals.length > 0) {
+                        signal = signals.join("<br>");
+                    } else {
+                        signal = "-";
+                        rowClass = "";
+                    }
+
+                    const row = `<tr>
                             <td style="font-weight:600">${strike}</td>
                             <td style="color:${color}; font-weight:700">${pcr.toFixed(2)}</td>
                             <td style="color:${cChange >= 0 ? '#ef4444' : '#10b981'}">${cChangeP.toFixed(1)}%</td>
@@ -399,85 +425,85 @@
                             <td>${(pInfo.delta_calc || 0).toFixed(2)}</td>
                             <td><span class="${rowClass}">${signal}</span></td>
                         </tr>`;
-                        signalBody.innerHTML += row;
-                    } else {
-                        stablePutOi.push(0); changePutOi.push(0); changePutColors.push('rgba(0,0,0,0)');
-                        stableCallOi.push(0); changeCallOi.push(0); changeCallColors.push('rgba(0,0,0,0)');
-                        customLabels.push(strikeKey);
-                        customLabelColors.push('#64748b');
-                    }
-                });
-
-                const targetValue = niftyData;
-                let annotationX = null;
-                for (let i = 0; i < strikePrices.length - 1; i++) {
-                    if (strikePrices[i] <= targetValue && targetValue <= strikePrices[i + 1]) {
-                        annotationX = i + (targetValue - strikePrices[i]) / (strikePrices[i + 1] - strikePrices[i]);
-                        break;
-                    }
+                    signalBody.innerHTML += row;
+                } else {
+                    stablePutOi.push(0); changePutOi.push(0); changePutColors.push('rgba(0,0,0,0)');
+                    stableCallOi.push(0); changeCallOi.push(0); changeCallColors.push('rgba(0,0,0,0)');
+                    customLabels.push(strikeKey);
+                    customLabelColors.push('#64748b');
                 }
+            });
 
-                renderChart(customLabels, stablePutOi, changePutOi, changePutColors,
-                    stableCallOi, changeCallOi, changeCallColors, niftyValue, customLabelColors, annotationX, niftyData);
-
-                lastSpotPrice = currentSpotPrice;
-                lastOiDataMap = JSON.parse(JSON.stringify(oiDataMap));
-            } catch (error) {
-                console.error('Error fetching data:', error);
+            const targetValue = niftyData;
+            let annotationX = null;
+            for (let i = 0; i < strikePrices.length - 1; i++) {
+                if (strikePrices[i] <= targetValue && targetValue <= strikePrices[i + 1]) {
+                    annotationX = i + (targetValue - strikePrices[i]) / (strikePrices[i + 1] - strikePrices[i]);
+                    break;
+                }
             }
+
+            renderChart(customLabels, stablePutOi, changePutOi, changePutColors,
+                stableCallOi, changeCallOi, changeCallColors, niftyValue, customLabelColors, annotationX, niftyData);
+
+            lastSpotPrice = currentSpotPrice;
+            lastOiDataMap = JSON.parse(JSON.stringify(oiDataMap));
+        } catch (error) {
+            console.error('Error fetching data:', error);
         }
+    }
 
-        function renderChart(labels, stablePut, changePut, changePutColors, stableCall, changeCall,
-            changeCallColors, niftyValue, labelColors, annotationX, niftyData) {
-            const ctx = document.getElementById('oiChart').getContext('2d');
-            if (myChart) myChart.destroy();
+    function renderChart(labels, stablePut, changePut, changePutColors, stableCall, changeCall,
+                         changeCallColors, niftyValue, labelColors, annotationX, niftyData) {
+        const ctx = document.getElementById('oiChart').getContext('2d');
+        if (myChart) myChart.destroy();
 
-            Chart.defaults.font.family = "'Inter', sans-serif";
-            Chart.defaults.color = "#64748b";
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.color = "#64748b";
 
-            myChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        { label: 'Put Stable', data: stablePut, backgroundColor: '#10b981', stack: 'put', borderRadius: 4 },
-                        { label: 'Put Change', data: changePut, backgroundColor: changePutColors, stack: 'put', borderRadius: 4 },
-                        { label: 'Call Stable', data: stableCall, backgroundColor: '#ef4444', stack: 'call', borderRadius: 4 },
-                        { label: 'Call Change', data: changeCall, backgroundColor: changeCallColors, stack: 'call', borderRadius: 4 }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { position: 'top', align: 'end', labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle' } },
-                        tooltip: { backgroundColor: '#1e293b', padding: 12, cornerRadius: 8, titleFont: { size: 14 } },
-                        annotation: {
-                            annotations: {
-                                line1: {
-                                    type: 'line', xMin: annotationX, xMax: annotationX,
-                                    borderColor: '#1e293b', borderWidth: 2, borderDash: [5, 5],
-                                    label: {
-                                        display: true, content: `Nifty: ${niftyData}`, position: 'top',
-                                        backgroundColor: '#1e293b', color: 'white', font: { weight: 'bold', size: 10 },
-                                        padding: 6, cornerRadius: 4
-                                    }
+        myChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    { label: 'Put Stable', data: stablePut, backgroundColor: '#10b981', stack: 'put', borderRadius: 4 },
+                    { label: 'Put Change', data: changePut, backgroundColor: changePutColors, stack: 'put', borderRadius: 4 },
+                    { label: 'Call Stable', data: stableCall, backgroundColor: '#ef4444', stack: 'call', borderRadius: 4 },
+                    { label: 'Call Change', data: changeCall, backgroundColor: changeCallColors, stack: 'call', borderRadius: 4 }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'top', align: 'end', labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle' } },
+                    tooltip: { backgroundColor: '#1e293b', padding: 12, cornerRadius: 8, titleFont: { size: 14 } },
+                    annotation: {
+                        annotations: {
+                            line1: {
+                                type: 'line', xMin: annotationX, xMax: annotationX,
+                                borderColor: '#1e293b', borderWidth: 2, borderDash: [5, 5],
+                                label: {
+                                    display: true, content: `Nifty: ${niftyData}`, position: 'top',
+                                    backgroundColor: '#1e293b', color: 'white', font: { weight: 'bold', size: 10 },
+                                    padding: 6, cornerRadius: 4
                                 }
                             }
                         }
-                    },
-                    scales: {
-                        x: { stacked: true, grid: { display: false }, ticks: { color: labelColors, font: { size: 10, weight: 600 } } },
-                        y: { stacked: true, grid: { color: '#f1f5f9' }, beginAtZero: true, ticks: { callback: v => v >= 1000 ? v / 1000 + 'k' : v } }
                     }
+                },
+                scales: {
+                    x: { stacked: true, grid: { display: false }, ticks: { color: labelColors, font: { size: 10, weight: 600 } } },
+                    y: { stacked: true, grid: { color: '#f1f5f9' }, beginAtZero: true, ticks: { callback: v => v >= 1000 ? v / 1000 + 'k' : v } }
                 }
-            });
-        }
+            }
+        });
+    }
 
-        fetchDataAndRender();
-        setInterval(fetchDataAndRender, 300000); //5 mins
-        //setInterval(fetchDataAndRender, 150000); //2.5 mins
-    </script>
+    fetchDataAndRender();
+    setInterval(fetchDataAndRender, 300000); //5 mins
+    //setInterval(fetchDataAndRender, 150000); //2.5 mins
+</script>
 </body>
 
 </html>
