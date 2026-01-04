@@ -381,27 +381,86 @@
 
                     let signals = [];
 
-                    if (priceTrend === 'UP') {
+                    if (priceTrend === 'UP')
+                    {
                         // 5-min Rule: Call Rel Change <= -15% AND Put Rel Change [5%, 10%]
-                        if (relCChange5 <= -15 && relPChange5 >= 5 && relPChange5 <= 10) {
+                        if (relCChange5 <= -15 && (relPChange5 >= 5 || relPChange5 <= 10))
+                        {
                             signals.push(`5m: BUY CALL @ ${cInfo.current_price.toFixed(2)}`);
                             rowClass = "signal-call";
                         }
                         // 15-min Rule: Same thresholds
-                        if (relCChange15 <= -15 && relPChange15 >= 5 && relPChange15 <= 10) {
+                        if (relCChange15 <= -15 && (relPChange15 >= 5 || relPChange15 <= 10))
+                        {
                             signals.push(`15m: BUY CALL @ ${cInfo.current_price.toFixed(2)}`);
                             rowClass = "signal-call";
                         }
-                    } else if (priceTrend === 'DOWN') {
+
+                        //Newly added - Puts Rel Change [10%, 15%] and Call Rel Change >= [-5%] and pcr is greater than 1.
+                        if(relCChange5 >= -5 && (relPChange5 >= 10 || relPChange5 <= 15) && pcr > 1)
+                        {
+                            signals.push(`5m: BUY CALL @ ${cInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-call";
+                        }
+                        //Newly added - Puts Rel Change [10%, 15%] and Call Rel Change >= [-5%] and pcr is greater than 1.
+                        if(relCChange15 >= -5 && (relPChange15 >= 10 || relPChange15 <= 15) && pcr > 1)
+                        {
+                            signals.push(`15m: BUY CALL @ ${cInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-call";
+                        }
+
+                        // if PCR gets unbalanced for 5 min
+                        if(pcr >= 1.6 && (relPChange5 <= -10 && (relCChange5 >= 5 || relCChange5 >= 10)))
+                        {
+                            signals.push(`PCR UB - 5m: BUY PUT @ ${pInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-put";
+                        }
+                        // if PCR gets unbalanced for 15 min
+                        if(pcr >= 1.6 && (relPChange15 <= -10 && (relCChange15 >= 5 || relCChange15 >= 10)))
+                        {
+                            signals.push(`PCR UB - 15m: BUY PUT @ ${pInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-put";
+                        }
+                    }
+                    else if (priceTrend === 'DOWN')
+                    {
                         // 5-min Rule: Put Rel Change <= -15% AND Call Rel Change [5%, 10%]
-                        if (relPChange5 <= -15 && relCChange5 >= 5 && relCChange5 <= 10) {
+                        if (relPChange5 <= -15 && (relCChange5 >= 5 || relCChange5 >= 10))
+                        {
                             signals.push(`5m: BUY PUT @ ${pInfo.current_price.toFixed(2)}`);
                             rowClass = "signal-put";
                         }
                         // 15-min Rule: Same thresholds
-                        if (relPChange15 <= -15 && relCChange15 >= 5 && relCChange15 <= 10) {
+                        if (relPChange15 <= -15 && (relCChange15 >= 5 || relCChange15 >= 10))
+                        {
                             signals.push(`15m: BUY PUT @ ${pInfo.current_price.toFixed(2)}`);
                             rowClass = "signal-put";
+                        }
+
+                        //Newly added - Call Rel Change [10%, 15%] and Put Rel Change >= [-5%] and pcr is less than 1.
+                        if ((relCChange5 >= 10 || relCChange5 >= 15) && relPChange5 >= -5 && pcr < 1)
+                        {
+                            signals.push(`5m: BUY PUT @ ${pInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-put";
+                        }
+                        //Newly added - Call Rel Change [10%, 15%] and Put Rel Change >= [-5%] and pcr is less than 1.
+                        if ((relCChange15 >= 10 || relCChange15 >= 15) && relPChange15 >= -5 && pcr < 1)
+                        {
+                            signals.push(`15m: BUY PUT @ ${pInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-put";
+                        }
+
+                        // if PCR gets unbalanced for 5 min
+                        if( pcr <= 0.6 && (relCChange5 <= -10 && (relPChange5 >= 5 || relPChange5 >= 10)))
+                        {
+                            signals.push(`PCR UB - 5m: BUY CALL @ ${cInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-call";
+                        }
+                        // if PCR gets unbalanced for 15 min
+                        if( pcr <= 0.6 && (relCChange15 <= -10 && (relPChange15 >= 5 || relPChange15 >= 10)))
+                        {
+                            signals.push(`PCR UB - 15m: BUY CALL @ ${cInfo.current_price.toFixed(2)}`);
+                            rowClass = "signal-call";
                         }
                     }
 
