@@ -16,6 +16,9 @@ public class MarketSnapshot
     private String niftyValue;
     private String niftyData;
     private String spotStrikePrice;
+    private double maxPainStrike;
+
+
 
     public String getSpotStrikePrice() {
         return spotStrikePrice;
@@ -56,4 +59,16 @@ public class MarketSnapshot
     public void setNiftyData(String niftyData) {
         this.niftyData = niftyData;
     }
+
+    public double getMaxPainStrike()
+    {
+        return maxPainStrike;
+    }
+
+    public void setMaxPainStrike(double maxPainStrike)
+    {
+        this.maxPainStrike = maxPainStrike;
+    }
+
+
 }

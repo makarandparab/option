@@ -19,6 +19,10 @@ public class OiStrikeData
 
     private PutInfo putInfo;
     private CallInfo callInfo;
+
+    private int extremeResistance;
+    private int extremeSupport;
+
     
     public long getPutOi() {
         return putOi;
@@ -98,5 +102,21 @@ public class OiStrikeData
 
     public void setCallInfo(CallInfo callInfo) {
         this.callInfo = callInfo;
+    }
+
+    public int getExtremeResistance() {
+        return extremeResistance;
+    }
+
+    public void setExtremeResistance(int extremeResistance) {
+        this.extremeResistance = extremeResistance;
+    }
+
+    public int getExtremeSupport() {
+        return extremeSupport;
+    }
+
+    public void setExtremeSupport(int extremeSupport) {
+        this.extremeSupport = extremeSupport;
     }
 }

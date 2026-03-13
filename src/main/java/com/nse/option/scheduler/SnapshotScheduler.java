@@ -20,11 +20,13 @@ public class SnapshotScheduler
 
     // Run every 5 minutes (300,000 ms)
     @Scheduled(fixedRate = 300000)
+    //@Scheduled(cron = "0 5/5 9-16 * * 1-5")
     public void fetchAndStoreSnapshot() {
         System.out.println("Scheduler: Fetching market snapshot at " + LocalDateTime.now());
         try {
             MarketSnapshot snapshot = marketSnapshotService.getMarketSnapshot();
             if (snapshot != null) {
+                marketSnapshotService.enrichSnapshot(snapshot);
                 snapshotHistoryService.addSnapshot(snapshot);
                 System.out.println("Scheduler: Snapshot stored successfully.");
             } else {
