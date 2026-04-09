@@ -50,11 +50,11 @@ public class MarketSnapshotImpl implements MarketSnapshotService
     @Value("${api.marketsnapshot.maxTime}")
     private String maxTime;
 
-    @Value("${api.marketsnapshot.minStrikePrice}")
-    private String minStrikePrice;
+    //@Value("${api.marketsnapshot.minStrikePrice}")
+    //private String minStrikePrice;
 
-    @Value("${api.marketsnapshot.maxStrikePrice}")
-    private String maxStrikePrice;
+    //@Value("${api.marketsnapshot.maxStrikePrice}")
+    //private String maxStrikePrice;
 
     @Autowired
     private ActiveContractPutService activeContractPutService;
@@ -77,8 +77,8 @@ public class MarketSnapshotImpl implements MarketSnapshotService
                     .queryParam("expDateList", expiryWeek)
                     .queryParam("minTime", minTime)
                     .queryParam("maxTime", maxTime)
-                    .queryParam("minStrikePrice", minStrikePrice)
-                    .queryParam("maxStrikePrice", maxStrikePrice)
+                    //.queryParam("minStrikePrice", minStrikePrice)
+                    //.queryParam("maxStrikePrice", maxStrikePrice)
                     .build(true)
                     .toUriString();
             System.out.println("The URL is :: " + url);
