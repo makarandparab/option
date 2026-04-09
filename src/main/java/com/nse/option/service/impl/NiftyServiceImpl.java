@@ -1,6 +1,7 @@
 package com.nse.option.service.impl;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.nse.option.model.nifty.IndexResponse;
 import com.nse.option.model.nifty.OptionChainResponse;
 import com.nse.option.service.NiftyService;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
@@ -31,6 +32,67 @@ public class NiftyServiceImpl implements NiftyService
 
     @Autowired
     private ObjectMapper objectMapper;
+
+
+    public String getNiftyData()
+    {
+        IndexResponse indexResponse = null;
+        String body = "";
+        String niftyValue = "";
+
+        try
+        {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl("https://www.nseindia.com/api/NextApi/apiClient")
+                    .queryParam("functionName", "getIndexData")
+                    .queryParam("type", "NIFTY%2050")
+                    .build(true)
+                    .toUriString();
+                    System.out.println("The URL is :: " + url);
+
+            // Build client with timeouts and NO auto-follow redirects (keeps headers intact)
+            RequestConfig requestConfig = RequestConfig.custom()
+                    .setConnectTimeout(Timeout.ofDays(10_000)) // ms
+                    .setResponseTimeout(Timeout.ofDays(20_000)) // ms
+                    .build();
+
+            try (CloseableHttpClient client = HttpClients.custom()
+                    .setDefaultRequestConfig(requestConfig)
+                    .disableRedirectHandling() // important when you need to preserve headers like Cookie
+                    .build())
+            {
+                HttpGet get = new HttpGet(url);
+
+                // Custom headers
+                get.addHeader(HttpHeaders.ACCEPT, "application/json, text/plain, */*");
+                get.addHeader(HttpHeaders.REFERER, "https://www.nseindia.com");
+                get.addHeader(HttpHeaders.USER_AGENT,
+                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                                + "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36");
+
+                try (CloseableHttpResponse response = client.execute(get))
+                {
+                    int status = response.getCode();
+                    body = response.getEntity() != null
+                            ? EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8)
+                            : "";
+
+                    indexResponse = objectMapper.readValue(body, IndexResponse.class);
+                    double value = indexResponse.getData().get(0).getLast();
+                    niftyValue = String.valueOf(value);
+                }
+            }
+        }
+        catch(Exception e)
+        {
+            e.printStackTrace();
+        }
+
+        return niftyValue;
+    }
+
+
+
 
     @Override
     public OptionChainResponse getNiftyOptionData()

@@ -6,4 +6,5 @@ import com.nse.option.model.nifty.OptionChainResponse;
 public interface NiftyService
 {
     public OptionChainResponse getNiftyOptionData();
+    public String getNiftyData();
 }

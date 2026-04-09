@@ -5,10 +5,8 @@ import com.nse.option.model.callput.MarketSnapshot;
 import com.nse.option.model.callput.OiStrikeData;
 import com.nse.option.model.callput.PutInfo;
 import com.nse.option.model.iv.ScreenerResponse;
-import com.nse.option.service.ActiveContractCallService;
-import com.nse.option.service.ActiveContractPutService;
-import com.nse.option.service.MarketSnapshotService;
-import com.nse.option.service.SnapshotHistoryService;
+import com.nse.option.service.*;
+import com.nse.option.util.OptionUtil;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +22,7 @@ import org.springframework.web.bind.annotation.ResponseBody;
 @Controller
 public class OptionController {
 
-    @Value("${app.allowed-strikes}")
+    //@Value("${app.allowed-strikes}")
     private List<Integer> allowedStrikes;
 
     @Autowired
@@ -42,6 +40,9 @@ public class OptionController {
     @Autowired
     private ObjectMapper mapper;
 
+    @Autowired
+    NiftyService niftyService;
+
     @GetMapping(value = "/optionData")
     @ResponseBody
     public MarketSnapshot getOptionData() {
@@ -53,6 +54,12 @@ public class OptionController {
 
         try
         {
+            niftyValue = niftyService.getNiftyData();
+            System.out.println("Nifty Value today ::: " + niftyValue);
+
+            allowedStrikes = OptionUtil.getAllowedList(niftyValue);
+            System.out.println(allowedStrikes);
+
             marketSnapshot = marketSnapshotService.getMarketSnapshot();
             System.out.println("DEBUG: marketSnapshot fetched: " + (marketSnapshot != null));
 
@@ -63,7 +70,6 @@ public class OptionController {
                 //System.out.println("DEBUG: PCR: " + pcr);
 
                 calculateMaxPain(marketSnapshot);
-                calculateResistanceSupport(marketSnapshot);
 
                 List<Integer> list = marketSnapshot.getBody().getOverallData().getStrikePriceList();
                 //System.out.println("DEBUG: Strike list size before filter: " + (list != null ? list.size() : "NULL"));
@@ -79,6 +85,8 @@ public class OptionController {
                         System.err.println("DEBUG: retainAll FAILED: " + e.getMessage());
                     }
                 }
+
+                calculateResistanceSupport(marketSnapshot);
 
                 if (marketSnapshot.getBody().getOiData() != null)
                 {
@@ -107,7 +115,7 @@ public class OptionController {
             enrichWithHistory(marketSnapshot, 5);
             enrichWithHistory(marketSnapshot, 15);
 
-            niftyValue = (marketSnapshot != null) ? marketSnapshot.getSpotStrikePrice() : null;
+            //niftyValue = (marketSnapshot != null) ? marketSnapshot.getSpotStrikePrice() : null;
             //System.out.println("@@@@ :::  " + niftyValue);
 
             if (marketSnapshot != null)
